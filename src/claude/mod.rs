@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub enum ClaudeModels {
@@ -83,10 +84,84 @@ fn resolve_env_variables(input: &str) -> String {
     .to_string()
 }
 
+fn get_config_path() -> Result<PathBuf> {
+    // Try multiple locations in order of preference
+    let possible_paths = vec![
+        // 1. Current directory (for development)
+        PathBuf::from("config.toml"),
+        // 2. XDG config directory (~/.config/xllm/config.toml)
+        dirs::config_dir()
+            .map(|p| p.join("xllm").join("config.toml"))
+            .unwrap_or_else(|| PathBuf::from("~/.config/xllm/config.toml")),
+        // 3. Home directory (~/.xllm.toml)
+        dirs::home_dir()
+            .map(|p| p.join(".xllm.toml"))
+            .unwrap_or_else(|| PathBuf::from("~/.xllm.toml")),
+    ];
+
+    for path in possible_paths {
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+
+    // If no config found, create the default config directory and provide helpful error
+    let config_dir = dirs::config_dir()
+        .map(|p| p.join("xllm"))
+        .unwrap_or_else(|| PathBuf::from("~/.config/xllm"));
+
+    Err(anyhow::anyhow!(
+        "Configuration file not found. Please create one at:\n  {}\n\nExample config.toml:\n[claude]\nmodel = \"claude-sonnet-4-20250514\"\nmax_tokens = 1024\nanthropic_api_key = \"${{ANTHROPIC_API_KEY}}\"\nurl = \"https://api.anthropic.com/\"",
+        config_dir.join("config.toml").display()
+    ))
+}
+
+pub fn create_default_config() -> Result<()> {
+    let config_dir = dirs::config_dir()
+        .map(|p| p.join("xllm"))
+        .unwrap_or_else(|| PathBuf::from("~/.config/xllm"));
+
+    // Create config directory if it doesn't exist
+    fs::create_dir_all(&config_dir).with_context(|| {
+        format!(
+            "Failed to create config directory: {}",
+            config_dir.display()
+        )
+    })?;
+
+    let config_path = config_dir.join("config.toml");
+
+    if config_path.exists() {
+        return Err(anyhow::anyhow!(
+            "Config file already exists at {}",
+            config_path.display()
+        ));
+    }
+
+    let default_config = r#"[claude]
+model = "claude-sonnet-4-20250514"
+max_tokens = 1024
+anthropic_api_key = "${ANTHROPIC_API_KEY}"
+url = "https://api.anthropic.com/"
+"#;
+
+    fs::write(&config_path, default_config)
+        .with_context(|| format!("Failed to write config file: {}", config_path.display()))?;
+
+    println!("✅ Created default config at {}", config_path.display());
+    println!("📝 Please set your ANTHROPIC_API_KEY environment variable or edit the config file.");
+
+    Ok(())
+}
+
 pub fn load_config() -> Result<Config> {
-    let config_content = fs::read_to_string("config.toml").context("Failed to read config.toml")?;
-    let mut config: Config =
-        toml::from_str(&config_content).context("Failed to parse config.toml")?;
+    let config_path = get_config_path()?;
+
+    let config_content = fs::read_to_string(&config_path)
+        .with_context(|| format!("Failed to read config file: {}", config_path.display()))?;
+
+    let mut config: Config = toml::from_str(&config_content)
+        .with_context(|| format!("Failed to parse config file: {}", config_path.display()))?;
 
     config.claude.anthropic_api_key = resolve_env_variables(&config.claude.anthropic_api_key);
 
@@ -145,3 +220,4 @@ pub async fn call_claude_api(
         Err(anyhow::anyhow!("No content in Claude response"))
     }
 }
+

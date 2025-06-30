@@ -1,7 +1,7 @@
 mod claude;
 use anyhow::{Context, Result};
 use clap::{Arg, Command};
-use claude::{call_claude_api, load_config};
+use claude::{call_claude_api, create_default_config, load_config};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use termimad::crossterm::style::Color::*;
@@ -31,9 +31,15 @@ async fn main() -> Result<()> {
         .version("1.0")
         .about("CLI tool for Claude API with markdown output")
         .arg(
+            Arg::new("init")
+                .long("init")
+                .help("Create a default configuration file")
+                .action(clap::ArgAction::SetTrue),
+        )
+        .arg(
             Arg::new("prompt")
                 .help("The prompt to send to Claude")
-                .required(true)
+                .required_unless_present("init")
                 .index(1),
         )
         .arg(
@@ -58,6 +64,17 @@ async fn main() -> Result<()> {
                 .help("File to include in the prompt"),
         )
         .get_matches();
+
+    // Handle --init flag
+    if matches.get_flag("init") {
+        match create_default_config() {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("❌ Failed to create config: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 
     let prompt = matches.get_one::<String>("prompt").unwrap();
     let model_str = matches.get_one::<String>("model").map(|s| s.as_str());
@@ -110,3 +127,4 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
