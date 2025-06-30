@@ -1,0 +1,22 @@
+[package]
+name = "xllm"
+version = "0.1.0"
+edition = "2024"
+authors = ["Trevor Seibert"]
+description = "A CLI for interacting with LLMs"
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "xllm"
+path = "src/main.rs"
+
+[dependencies]
+clap = "4.0"
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+termimad = "0.23"
+tokio = { version = "1.0", features = ["full"] }
+anyhow = "1.0"
+toml = "0.8"
+indicatif = "0.17.11"
+regex = "1.11.1"
