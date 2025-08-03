@@ -23,7 +23,4 @@ toml.workspace = true
 indicatif.workspace = true
 regex.workspace = true
 dirs.workspace = true
-tonic.workspace = true
-prost.workspace = true
-prost-types.workspace = true
-xllm-proto = { path = "../xllm-proto" }
+# Note: proxy functionality (tonic, prost, xllm-proto) is only available when building from source
