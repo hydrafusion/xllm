@@ -11,7 +11,7 @@ cargo install xllm
 xllm --init  # This will generate a config file
 ```
 
-### Option 2: Clone for full features (Recommended)
+### Option 2: Clone for full features (Recommended if you want gRPC proxy support)
 
 ```bash
 git clone https://github.com/hydrafusion/xllm.git

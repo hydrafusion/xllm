@@ -77,15 +77,26 @@ pub async fn call_claude_via_grpc_proxy(
 
     let mut client = ProxyServiceClient::new(channel);
 
-    // Create the gRPC request
-    let grpc_request = tonic::Request::new(HttpRequest {
+    // Create the gRPC request with ALL sensitive data in protobuf payload
+    // Only the proxy URL will be visible, everything else is binary protobuf
+    let mut grpc_request = tonic::Request::new(HttpRequest {
         method: "POST".to_string(),
-        url: format!("{}/v1/messages", claude_config.url),
-        headers,
-        body,
+        url: format!("{}/v1/messages", claude_config.url), // This goes into protobuf payload
+        headers, // API keys and headers go into protobuf payload
+        body, // Request data goes into protobuf payload
     });
 
-    eprintln!("🔒 Sending request via gRPC (URL and data are in protobuf)");
+    // Add minimal, generic metadata to avoid exposing any service details
+    grpc_request.metadata_mut().insert(
+        "content-type", 
+        "application/grpc".parse().context("Failed to create content-type header")?
+    );
+    grpc_request.metadata_mut().insert(
+        "user-agent", 
+        "grpc-rust-client/1.0".parse().context("Failed to create user-agent header")?
+    );
+
+    eprintln!("🔒 Sending request via gRPC (Anthropic URL, API keys, and data fully obfuscated in protobuf)");
 
     // Send the request through gRPC
     let grpc_response = client

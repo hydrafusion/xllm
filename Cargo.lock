@@ -2494,6 +2494,8 @@ dependencies = [
  "clap",
  "dirs",
  "indicatif",
+ "prost",
+ "prost-types",
  "regex",
  "reqwest",
  "serde",
@@ -2501,6 +2503,8 @@ dependencies = [
  "termimad",
  "tokio",
  "toml",
+ "tonic",
+ "xllm-proto",
 ]
 
 [[package]]

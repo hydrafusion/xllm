@@ -7,6 +7,7 @@ use clap::{Arg, Command};
 use genconfig::{create_default_config, load_config, get_model_config, ModelProvider};
 use indicatif::{ProgressBar, ProgressStyle};
 use models::claude::call_claude_api;
+use utils::proxy::{proxy_config_true, call_claude_via_grpc_proxy};
 use std::fs;
 use utils::render::render_markdown;
 
@@ -105,19 +106,25 @@ async fn main() -> Result<()> {
     spinner.set_message("loading...");
     spinner.enable_steady_tick(std::time::Duration::from_millis(200)); 
     
-    // Check if proxy is enabled in config and warn user if not available
-    if config.global.as_ref().map_or(false, |global| global.proxy) {
-        eprintln!("⚠️  Warning: Proxy functionality is only available when building from source.");
-        eprintln!("   Using direct Claude API instead.");
-    }
-    
-    // Use direct Claude API (proxy functionality not available in published version)
-    let result = call_claude_api(
-        &claude_config,
-        &final_prompt,
-        model_override,
-        max_tokens_override,
-    ).await;
+    // Check if proxy is enabled in config and decide which method to use
+    let result = if proxy_config_true(&config) {
+        // Use gRPC proxy
+        call_claude_via_grpc_proxy(
+            &claude_config,
+            &config,
+            &final_prompt,
+            model_override,
+            max_tokens_override,
+        ).await
+    } else {
+        // Use direct Claude API
+        call_claude_api(
+            &claude_config,
+            &final_prompt,
+            model_override,
+            max_tokens_override,
+        ).await
+    };
 
     match result {
         Ok(response) => {
