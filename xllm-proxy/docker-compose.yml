@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   xllm-proxy:
     image: rust:1.88-bookworm
@@ -14,7 +12,7 @@ services:
     command: >
       bash -c "
         apt-get update &&
-        apt-get install -y protobuf-compiler libprotobuf-dev git &&
+        apt-get install -y git &&
         rm -rf /tmp/xllm &&
         git clone --depth 1 https://github.com/hydrafusion/xllm.git /tmp/xllm &&
         cd /tmp/xllm &&

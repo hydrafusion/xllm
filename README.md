@@ -60,5 +60,4 @@ cargo install --path ./xllm
 This repository contains multiple packages:
 
 - **`xllm`** - The main CLI application (published on crates.io)
-- **`xllm-proxy`** - gRPC proxy server for enhanced security (clone only)
-- **`xllm-proto`** - Shared protobuf definitions (clone only)
+- **`xllm-proxy`** - TCP proxy server for enhanced security (clone only)

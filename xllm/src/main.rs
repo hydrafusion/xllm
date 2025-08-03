@@ -7,7 +7,7 @@ use clap::{Arg, Command};
 use genconfig::{create_default_config, load_config, get_model_config, ModelProvider};
 use indicatif::{ProgressBar, ProgressStyle};
 use models::claude::call_claude_api;
-use utils::proxy::{proxy_config_true, call_claude_via_grpc_proxy};
+use utils::proxy::{proxy_config_true, call_claude_via_tcp_proxy};
 use std::fs;
 use utils::render::render_markdown;
 
@@ -108,8 +108,8 @@ async fn main() -> Result<()> {
     
     // Check if proxy is enabled in config and decide which method to use
     let result = if proxy_config_true(&config) {
-        // Use gRPC proxy
-        call_claude_via_grpc_proxy(
+        // Use TCP proxy
+        call_claude_via_tcp_proxy(
             &claude_config,
             &config,
             &final_prompt,

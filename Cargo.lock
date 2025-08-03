@@ -2644,8 +2644,6 @@ dependencies = [
  "clap",
  "dirs",
  "indicatif",
- "prost",
- "prost-types",
  "rand",
  "regex",
  "reqwest",
@@ -2654,8 +2652,7 @@ dependencies = [
  "termimad",
  "tokio",
  "toml",
- "tonic",
- "xllm-proto",
+ "url",
 ]
 
 [[package]]
@@ -2674,15 +2671,11 @@ version = "0.1.3"
 dependencies = [
  "aes-gcm",
  "anyhow",
- "prost",
- "prost-types",
  "rand",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
- "tonic",
- "xllm-proto",
 ]
 
 [[package]]

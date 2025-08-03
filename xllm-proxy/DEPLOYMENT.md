@@ -23,7 +23,7 @@ docker-compose up -d
 That's it! The container will:
 1. ✅ Pull Rust image
 2. ✅ Install protobuf compiler & git  
-3. ✅ Clone only xllm-proxy, xllm-proto, and Cargo.toml
+3. ✅ Clone only xllm-proxy and Cargo.toml
 4. ✅ Build and run the proxy server
 5. ✅ Expose port 50051
 

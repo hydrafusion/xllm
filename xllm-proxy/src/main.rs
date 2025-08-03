@@ -1,236 +1,247 @@
 use anyhow::Result;
 use std::collections::HashMap;
-use tonic::{transport::Server, Request, Response, Status};
-use prost::Message as ProstMessage;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
-use aes_gcm::aead::Aead;
-use xllm_proto::{
-    proxy_service_server::{ProxyService, ProxyServiceServer},
-    HttpRequest, HttpResponse, ProxyRequest, ProxyResponse,
-};
+use aes_gcm::aead::{Aead, OsRng, AeadCore};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default)]
-pub struct ProxyServiceImpl {}
+// Pre-shared encryption key for obfuscation
+const OBFUSCATION_KEY: &[u8; 32] = b"xllm_secure_proxy_key_2024_v1.0!";
 
-#[tonic::async_trait]
-impl ProxyService for ProxyServiceImpl {
-    async fn forward_request(
-        &self,
-        request: Request<HttpRequest>,
-    ) -> Result<Response<HttpResponse>, Status> {
-        let http_request = request.into_inner();
-        
-        println!("🔄 Received request to proxy: {} {}", http_request.method, http_request.url);
-        
-        // Create HTTP client
-        let client = reqwest::Client::new();
-        
-        // Build the HTTP request
-        let mut req_builder = match http_request.method.to_uppercase().as_str() {
-            "GET" => client.get(&http_request.url),
-            "POST" => client.post(&http_request.url),
-            "PUT" => client.put(&http_request.url),
-            "DELETE" => client.delete(&http_request.url),
-            "PATCH" => client.patch(&http_request.url),
-            "HEAD" => client.head(&http_request.url),
-            method => {
-                return Err(Status::invalid_argument(format!("Unsupported HTTP method: {}", method)));
-            }
-        };
-
-        // Add headers
-        for (key, value) in &http_request.headers {
-            req_builder = req_builder.header(key, value);
-        }
-
-        // Add body if present
-        if !http_request.body.is_empty() {
-            req_builder = req_builder.body(http_request.body);
-        }
-
-        // Execute the request
-        match req_builder.send().await {
-            Ok(response) => {
-                let status_code = response.status().as_u16() as i32;
-                
-                // Extract headers
-                let mut headers = HashMap::new();
-                for (key, value) in response.headers() {
-                    if let Ok(value_str) = value.to_str() {
-                        headers.insert(key.as_str().to_string(), value_str.to_string());
-                    }
-                }
-
-                // Extract body
-                let body = match response.bytes().await {
-                    Ok(bytes) => bytes.to_vec(),
-                    Err(e) => {
-                        return Err(Status::internal(format!("Failed to read response body: {}", e)));
-                    }
-                };
-
-                println!("✅ Request completed with status: {}", status_code);
-
-                let http_response = HttpResponse {
-                    status_code,
-                    headers,
-                    body,
-                };
-
-                Ok(Response::new(http_response))
-            }
-            Err(e) => {
-                println!("❌ Request failed: {}", e);
-                Err(Status::internal(format!("HTTP request failed: {}", e)))
-            }
-        }
-    }
-
-    async fn forward_obfuscated_request(
-        &self,
-        request: Request<ProxyRequest>,
-    ) -> Result<Response<ProxyResponse>, Status> {
-        let proxy_request = request.into_inner();
-        
-        println!("🔒 Received obfuscated request to proxy URL: {}", proxy_request.proxy_url);
-        
-        // DECRYPT the request package first
-        const OBFUSCATION_KEY: &[u8; 32] = b"xllm_secure_proxy_key_2024_v1.0!"; // Pre-shared secret
-        let key = Key::<Aes256Gcm>::from_slice(OBFUSCATION_KEY);
-        let cipher = Aes256Gcm::new(key);
-        
-        // Extract nonce (first 12 bytes) and encrypted data
-        if proxy_request.request_package.len() < 12 {
-            return Err(Status::invalid_argument("Invalid encrypted request package"));
-        }
-        
-        let nonce_bytes = &proxy_request.request_package[..12];
-        let encrypted_data = &proxy_request.request_package[12..];
-        let nonce = Nonce::from_slice(nonce_bytes);
-        
-        // Decrypt the request package
-        let decrypted_package = match cipher.decrypt(nonce, encrypted_data) {
-            Ok(data) => data,
-            Err(e) => {
-                println!("❌ Failed to decrypt request package: {:?}", e);
-                return Err(Status::invalid_argument("Failed to decrypt request package"));
-            }
-        };
-        
-        // Deserialize the decrypted request package to get the actual HTTP request
-        let http_request = match HttpRequest::decode(&decrypted_package[..]) {
-            Ok(req) => req,
-            Err(e) => {
-                println!("❌ Failed to decode request package: {}", e);
-                return Err(Status::invalid_argument(format!("Failed to decode request package: {}", e)));
-            }
-        };
-        
-        println!("🔄 Decoded request: {} {}", http_request.method, http_request.url);
-        
-        // Use the existing HTTP forwarding logic
-        let http_response = match self.execute_http_request(http_request).await {
-            Ok(response) => response,
-            Err(status) => return Err(status),
-        };
-        
-        // Serialize the response back into a package
-        let response_package = http_response.encode_to_vec();
-        
-        let proxy_response = ProxyResponse {
-            response_package,
-        };
-        
-        println!("✅ Obfuscated request completed and response packaged");
-        
-        Ok(Response::new(proxy_response))
-    }
+#[derive(Serialize, Deserialize, Debug)]
+struct ProxyRequest {
+    proxy_url: String,
+    request_object: Vec<u8>, // Encrypted HTTP request data
 }
 
-impl ProxyServiceImpl {
-    async fn execute_http_request(&self, http_request: HttpRequest) -> Result<HttpResponse, Status> {
-        // Create HTTP client
-        let client = reqwest::Client::new();
+#[derive(Serialize, Deserialize, Debug)]
+struct HttpRequest {
+    method: String,
+    url: String,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct HttpResponse {
+    status_code: u16,
+    headers: HashMap<String, String>,
+    body: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ProxyResponse {
+    response_object: Vec<u8>, // Encrypted HTTP response data
+}
+
+async fn handle_client(mut stream: TcpStream) -> Result<()> {
+    let peer_addr = stream.peer_addr()?;
+    println!("🔗 New connection from: {}", peer_addr);
+
+    // Read the incoming request
+    let mut buffer = Vec::new();
+    stream.read_to_end(&mut buffer).await?;
+
+    if buffer.is_empty() {
+        println!("❌ Empty request from {}", peer_addr);
+        return Ok(());
+    }
+
+    // Deserialize the proxy request
+    let proxy_request: ProxyRequest = match serde_json::from_slice(&buffer) {
+        Ok(req) => req,
+        Err(e) => {
+            println!("❌ Failed to deserialize request: {}", e);
+            return Ok(());
+        }
+    };
+
+    println!("🔒 Received encrypted request to proxy: {}", proxy_request.proxy_url);
+
+    // Decrypt the request object
+    let http_request = match decrypt_request_object(&proxy_request.request_object) {
+        Ok(req) => req,
+        Err(e) => {
+            println!("❌ Failed to decrypt request: {}", e);
+            return Ok(());
+        }
+    };
+
+    println!("🔄 Decrypted request: {} {}", http_request.method, http_request.url);
+
+    // Execute the actual HTTP request
+    let http_response = match execute_http_request(http_request).await {
+        Ok(resp) => resp,
+        Err(e) => {
+            println!("❌ HTTP request failed: {}", e);
+            return Ok(());
+        }
+    };
+
+    // Encrypt the response
+    let encrypted_response = match encrypt_response_object(&http_response) {
+        Ok(encrypted) => encrypted,
+        Err(e) => {
+            println!("❌ Failed to encrypt response: {}", e);
+            return Ok(());
+        }
+    };
+
+    // Create proxy response
+    let proxy_response = ProxyResponse {
+        response_object: encrypted_response,
+    };
+
+    // Serialize and send response
+    let response_data = serde_json::to_vec(&proxy_response)?;
+    stream.write_all(&response_data).await?;
+
+    println!("✅ Request completed and encrypted response sent to {}", peer_addr);
+    Ok(())
+}
+
+fn decrypt_request_object(encrypted_data: &[u8]) -> Result<HttpRequest> {
+    if encrypted_data.len() < 12 {
+        return Err(anyhow::anyhow!("Invalid encrypted data: too short"));
+    }
+
+    let key = Key::<Aes256Gcm>::from_slice(OBFUSCATION_KEY);
+    let cipher = Aes256Gcm::new(key);
+    
+    let nonce_bytes = &encrypted_data[..12];
+    let ciphertext = &encrypted_data[12..];
+    let nonce = Nonce::from_slice(nonce_bytes);
+
+    let decrypted = cipher.decrypt(nonce, ciphertext)
+        .map_err(|e| anyhow::anyhow!("Decryption failed: {:?}", e))?;
+
+    let http_request: HttpRequest = serde_json::from_slice(&decrypted)
+        .map_err(|e| anyhow::anyhow!("Failed to deserialize decrypted request: {}", e))?;
+
+    Ok(http_request)
+}
+
+fn encrypt_response_object(http_response: &HttpResponse) -> Result<Vec<u8>> {
+    let key = Key::<Aes256Gcm>::from_slice(OBFUSCATION_KEY);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+    let response_data = serde_json::to_vec(http_response)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize response: {}", e))?;
+
+    let encrypted = cipher.encrypt(&nonce, response_data.as_ref())
+        .map_err(|e| anyhow::anyhow!("Encryption failed: {:?}", e))?;
+
+    let mut result = nonce.to_vec();
+    result.extend_from_slice(&encrypted);
+    Ok(result)
+}
+
+async fn execute_http_request(http_request: HttpRequest) -> Result<HttpResponse> {
+    let client = reqwest::Client::new();
+
+    let mut req_builder = match http_request.method.to_uppercase().as_str() {
+        "GET" => client.get(&http_request.url),
+        "POST" => client.post(&http_request.url),
+        "PUT" => client.put(&http_request.url),
+        "DELETE" => client.delete(&http_request.url),
+        "PATCH" => client.patch(&http_request.url),
+        "HEAD" => client.head(&http_request.url),
+        method => {
+            return Err(anyhow::anyhow!("Unsupported HTTP method: {}", method));
+        }
+    };
+
+    // Add headers
+    for (key, value) in &http_request.headers {
+        req_builder = req_builder.header(key, value);
+    }
+
+    // Add body if present
+    if !http_request.body.is_empty() {
+        req_builder = req_builder.body(http_request.body);
+    }
+
+    // Execute the request
+    let response = req_builder.send().await?;
+    let status_code = response.status().as_u16();
+
+    // Extract headers with obfuscation (filter out provider-specific headers)
+    let mut headers = HashMap::new();
+    for (key, value) in response.headers() {
+        if let Ok(value_str) = value.to_str() {
+            let key_lower = key.as_str().to_lowercase();
+            
+            // Only include generic headers, exclude provider-specific ones
+            if is_generic_header(&key_lower) {
+                headers.insert(key.as_str().to_string(), value_str.to_string());
+            }
+        }
+    }
+
+    let body = response.bytes().await?.to_vec();
+
+    println!("✅ HTTP request completed with status: {} (headers obfuscated)", status_code);
+
+    Ok(HttpResponse {
+        status_code,
+        headers,
+        body,
+    })
+}
+
+/// Helper function to determine if a header should be included in responses
+/// This filters out provider-specific headers to maintain obfuscation
+fn is_generic_header(header_name: &str) -> bool {
+    match header_name {
+        // Allow standard HTTP headers
+        "content-type" | "content-length" | "content-encoding" => true,
+        "cache-control" | "expires" | "etag" | "last-modified" => true,
+        "date" | "server" | "connection" | "keep-alive" => true,
+        "strict-transport-security" | "x-content-type-options" => true,
+        "x-frame-options" | "x-xss-protection" => true,
         
-        // Build the HTTP request
-        let mut req_builder = match http_request.method.to_uppercase().as_str() {
-            "GET" => client.get(&http_request.url),
-            "POST" => client.post(&http_request.url),
-            "PUT" => client.put(&http_request.url),
-            "DELETE" => client.delete(&http_request.url),
-            "PATCH" => client.patch(&http_request.url),
-            "HEAD" => client.head(&http_request.url),
-            method => {
-                return Err(Status::invalid_argument(format!("Unsupported HTTP method: {}", method)));
-            }
-        };
-
-        // Add headers
-        for (key, value) in &http_request.headers {
-            req_builder = req_builder.header(key, value);
-        }
-
-        // Add body if present
-        if !http_request.body.is_empty() {
-            req_builder = req_builder.body(http_request.body);
-        }
-
-        // Execute the request
-        match req_builder.send().await {
-            Ok(response) => {
-                let status_code = response.status().as_u16() as i32;
-                
-                // Extract headers
-                let mut headers = HashMap::new();
-                for (key, value) in response.headers() {
-                    if let Ok(value_str) = value.to_str() {
-                        headers.insert(key.as_str().to_string(), value_str.to_string());
-                    }
-                }
-
-                // Extract body
-                let body = match response.bytes().await {
-                    Ok(bytes) => bytes.to_vec(),
-                    Err(e) => {
-                        return Err(Status::internal(format!("Failed to read response body: {}", e)));
-                    }
-                };
-
-                println!("✅ Request completed with status: {}", status_code);
-
-                let http_response = HttpResponse {
-                    status_code,
-                    headers,
-                    body,
-                };
-
-                Ok(http_response)
-            }
-            Err(e) => {
-                println!("❌ Request failed: {}", e);
-                Err(Status::internal(format!("HTTP request failed: {}", e)))
-            }
+        // Block provider-specific headers that expose the backend service
+        header if header.starts_with("anthropic-") => false,
+        header if header.starts_with("openai-") => false,
+        header if header.starts_with("x-ratelimit") => false,
+        header if header.starts_with("x-request-id") => false,
+        "request-id" | "cf-ray" | "cf-cache-status" => false,
+        "via" | "x-robots-tag" => false,
+        
+        // Default: allow other headers but log them for monitoring
+        _ => {
+            println!("🔍 Allowing unknown header: {}", header_name);
+            true
         }
     }
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Configure from environment variables for Docker deployment
     let host = std::env::var("XLLM_PROXY_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
     let port = std::env::var("XLLM_PROXY_PORT").unwrap_or_else(|_| "50051".to_string());
-    let addr = format!("{}:{}", host, port).parse()?;
+    let addr = format!("{}:{}", host, port);
+
+    let listener = TcpListener::bind(&addr).await?;
     
-    let proxy_service = ProxyServiceImpl::default();
+    println!("🚀 Starting xllm-proxy TCP server on {}", addr);
+    println!("� Ready to handle encrypted HTTP requests...");
+    println!("🌐 Proxy will obfuscate all provider-specific data");
 
-    println!("🚀 Starting xllm-proxy gRPC server on {}", addr);
-    println!("📡 Ready to proxy HTTP requests via protobuf...");
-    println!("🐳 Docker deployment mode: listening on all interfaces");
-
-    Server::builder()
-        .add_service(ProxyServiceServer::new(proxy_service))
-        .serve(addr)
-        .await?;
-
-    Ok(())
+    loop {
+        match listener.accept().await {
+            Ok((stream, _)) => {
+                tokio::spawn(async move {
+                    if let Err(e) = handle_client(stream).await {
+                        println!("❌ Error handling client: {}", e);
+                    }
+                });
+            }
+            Err(e) => {
+                println!("❌ Failed to accept connection: {}", e);
+            }
+        }
+    }
 }
