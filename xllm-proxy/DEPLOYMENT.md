@@ -110,5 +110,3 @@ Your xllm-proxy is now ready to:
 - ✅ Return responses as protobuf
 - ✅ Auto-restart on failure
 - ✅ Scale horizontally if needed
-
-The deployment is clean, minimal, and production-ready! 🚀
