@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   xllm-proxy:
-    image: rust:1.75-bookworm
+    image: rust:1.80-bookworm
     container_name: xllm-proxy
     working_dir: /app
     ports:
