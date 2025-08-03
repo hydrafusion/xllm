@@ -16,10 +16,8 @@ services:
         apt-get update &&
         apt-get install -y protobuf-compiler libprotobuf-dev git &&
         rm -rf /tmp/xllm &&
-        git clone --depth 1 --filter=blob:none --sparse https://github.com/hydrafusion/xllm.git /tmp/xllm &&
+        git clone --depth 1 https://github.com/hydrafusion/xllm.git /tmp/xllm &&
         cd /tmp/xllm &&
-        git sparse-checkout set xllm-proxy xllm-proto &&
-        git checkout HEAD -- Cargo.toml &&
         cargo run --package xllm-proxy
       "
     restart: "no"
