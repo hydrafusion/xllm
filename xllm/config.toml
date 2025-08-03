@@ -1,6 +1,6 @@
 [global]
 proxy = true
-proxy_url = "http://localhost:50051"
+proxy_url = "http://127.0.0.1:50051"
 
 [models.claude]
 model = "claude-opus-4-20250514"
