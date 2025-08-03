@@ -1,29 +1,37 @@
 # xllm
 
-An extensable cli utility for running LLMs.
+Example cli utility for running LLMs.
 
 ## Installation
 
-```Basho
+```Bash
 cargo install xllm
+
+xllm --init # This will generate a config file
 
 ```
 
 ## Dev Mode
 
 ```bash
-cargo run -- -m haiku3 "How can i use xllm?" --file ./example.py
+# Run xllm CLI from workspace root
+cargo run -p xllm -- -m haiku3 "How can i use xllm?" --file ./example.py
 
+# Or from the xllm directory
+cd xllm && cargo run -- -m haiku3 "How can i use xllm?" --file ./example.py
 ```
 
 ## Building from source
 
 ```bash
+# Build the entire workspace
 cargo build --release 
-cargo run -- -m haiku3 "How can i use xllm?" --file ./example.py
 
-## Or install it manually
-cargo install --path .
+# Run xllm from workspace root
+cargo run -p xllm -- -m haiku3 "How can i use xllm?" --file ./example.py
+
+# Or install the xllm binary manually
+cargo install --path ./xllm
 ```
 
 ## Future Features
@@ -69,3 +77,30 @@ xllm -m haiku3 -o window_name "How can i use xllm?" --file ./example.py
 ```Bash
 xllm "How can I create python enums?" --file exmple.py
 ```
+
+### Nice Features
+
+#### gRPC Proxy Server
+
+The `xllm-proxy` provides a secure, efficient reverse proxy for API requests:
+
+```bash
+# Start the proxy server
+cargo run -p xllm-proxy
+
+# Configure xllm to use the proxy
+xllm --init  # Creates config file
+# Edit config.toml to enable proxy mode:
+# [global]
+# proxy = true
+# proxy_url = "http://127.0.0.1:50051"
+```
+
+**Benefits:**
+- 🔒 **Enhanced Security**: gRPC encryption vs plain HTTP
+- ⚡ **Better Performance**: Protobuf compression and gRPC multiplexing  
+- 🛡️ **Type Safety**: Strongly typed message definitions
+- 📊 **Request Logging**: Centralized logging and monitoring
+
+A really nice feature would be using a proxy to handle the request, and the cli
+tool will compress encript the request.

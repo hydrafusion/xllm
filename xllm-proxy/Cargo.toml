@@ -1,0 +1,23 @@
+[package]
+name = "xllm-proxy"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "gRPC proxy server for xllm"
+
+[[example]]
+name = "test_proxy"
+path = "examples/test_proxy.rs"
+
+[dependencies]
+tokio.workspace = true
+tonic.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+anyhow.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+xllm-proto = { path = "../xllm-proto" }

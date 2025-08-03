@@ -1,5 +1,0 @@
-[claude]
-model = "claude-opus-4-20250514"
-max_tokens = 1024
-anthropic_api_key = "${ANTHROPIC_API_KEY}"
-url = "https://api.anthropic.com/"

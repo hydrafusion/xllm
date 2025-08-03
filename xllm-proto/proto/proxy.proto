@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package proxy;
+
+// The proxy service definition
+service ProxyService {
+  // Send an HTTP request through the proxy
+  rpc ForwardRequest(HttpRequest) returns (HttpResponse);
+}
+
+// HTTP request message
+message HttpRequest {
+  string method = 1;           // HTTP method (GET, POST, etc.)
+  string url = 2;              // Target URL to forward to
+  map<string, string> headers = 3;  // HTTP headers
+  bytes body = 4;              // Request body
+}
+
+// HTTP response message
+message HttpResponse {
+  int32 status_code = 1;       // HTTP status code
+  map<string, string> headers = 2;  // Response headers
+  bytes body = 3;              // Response body
+}
+
+// Error details for failed requests
+message ErrorDetails {
+  string message = 1;
+  string code = 2;
+}
