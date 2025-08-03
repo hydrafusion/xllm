@@ -3,9 +3,10 @@ use crate::models::claude::{ClaudeRequest, Message};
 use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tonic::transport::Channel;
+use prost::Message as ProstMessage;
 
 // Import from the generated proto module
-use xllm_proto::HttpRequest;
+use xllm_proto::{HttpRequest, HttpResponse, ProxyRequest, ProxyResponse};
 use xllm_proto::proxy_service_client::ProxyServiceClient;
 
 /// Determines if we should use proxy based on config
@@ -77,34 +78,36 @@ pub async fn call_claude_via_grpc_proxy(
 
     let mut client = ProxyServiceClient::new(channel);
 
-    // Create the gRPC request with ALL sensitive data in protobuf payload
-    // Only the proxy URL will be visible, everything else is binary protobuf
-    let mut grpc_request = tonic::Request::new(HttpRequest {
+    // Create the internal HTTP request structure
+    let http_request = HttpRequest {
         method: "POST".to_string(),
-        url: format!("{}/v1/messages", claude_config.url), // This goes into protobuf payload
-        headers, // API keys and headers go into protobuf payload
-        body, // Request data goes into protobuf payload
+        url: format!("{}/v1/messages", claude_config.url),
+        headers,
+        body,
+    };
+
+    // Serialize the HTTP request into bytes for obfuscation
+    let request_package = http_request.encode_to_vec();
+
+    // Create the obfuscated gRPC request - only proxy URL visible
+    let grpc_request = tonic::Request::new(ProxyRequest {
+        proxy_url: proxy_url.clone(), // Only this is visible in network traffic
+        request_package,              // All sensitive data is binary protobuf
     });
 
-    // Add minimal, generic metadata to avoid exposing any service details
-    grpc_request.metadata_mut().insert(
-        "content-type", 
-        "application/grpc".parse().context("Failed to create content-type header")?
-    );
-    grpc_request.metadata_mut().insert(
-        "user-agent", 
-        "grpc-rust-client/1.0".parse().context("Failed to create user-agent header")?
-    );
+    eprintln!("🔒 Sending obfuscated request via gRPC (Anthropic URL, API keys, and data fully hidden)");
 
-    eprintln!("🔒 Sending request via gRPC (Anthropic URL, API keys, and data fully obfuscated in protobuf)");
-
-    // Send the request through gRPC
+    // Send the request through the new obfuscated gRPC method
     let grpc_response = client
-        .forward_request(grpc_request)
+        .forward_obfuscated_request(grpc_request)
         .await
-        .context("Failed to send gRPC request to proxy")?;
+        .context("Failed to send obfuscated gRPC request to proxy")?;
 
-    let http_response = grpc_response.into_inner();
+    let proxy_response = grpc_response.into_inner();
+
+    // Deserialize the response package
+    let http_response = HttpResponse::decode(&proxy_response.response_package[..])
+        .context("Failed to decode response package from proxy")?;
 
     eprintln!("✅ Successfully received response from gRPC proxy");
     eprintln!("📊 Response status: {}", http_response.status_code);
