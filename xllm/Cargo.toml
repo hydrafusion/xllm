@@ -27,3 +27,5 @@ tonic.workspace = true
 prost.workspace = true
 prost-types.workspace = true
 xllm-proto = { path = "../xllm-proto" }
+aes-gcm = "0.10"
+rand = "0.8"

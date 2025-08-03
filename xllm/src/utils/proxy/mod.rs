@@ -4,6 +4,9 @@ use anyhow::{Context, Result};
 use std::collections::HashMap;
 use tonic::transport::Channel;
 use prost::Message as ProstMessage;
+use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
+use aes_gcm::aead::{Aead, OsRng, AeadCore};
+use rand::RngCore;
 
 // Import from the generated proto module
 use xllm_proto::{HttpRequest, HttpResponse, ProxyRequest, ProxyResponse};
@@ -89,10 +92,23 @@ pub async fn call_claude_via_grpc_proxy(
     // Serialize the HTTP request into bytes for obfuscation
     let request_package = http_request.encode_to_vec();
 
+    // ENCRYPT the request package for true obfuscation using pre-shared key
+    const OBFUSCATION_KEY: &[u8; 32] = b"xllm_secure_proxy_key_2024_v1.0!"; // Pre-shared secret
+    let key = Key::<Aes256Gcm>::from_slice(OBFUSCATION_KEY);
+    let cipher = Aes256Gcm::new(key);
+    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    
+    let encrypted_package = cipher.encrypt(&nonce, request_package.as_ref())
+        .map_err(|e| anyhow::anyhow!("Failed to encrypt request package: {:?}", e))?;
+    
+    // Combine nonce + encrypted data
+    let mut final_package = nonce.to_vec();
+    final_package.extend_from_slice(&encrypted_package);
+
     // Create the obfuscated gRPC request - only proxy URL visible
     let grpc_request = tonic::Request::new(ProxyRequest {
         proxy_url: proxy_url.clone(), // Only this is visible in network traffic
-        request_package,              // All sensitive data is binary protobuf
+        request_package: final_package,  // Now truly encrypted binary data
     });
 
     eprintln!("🔒 Sending obfuscated request via gRPC (Anthropic URL, API keys, and data fully hidden)");

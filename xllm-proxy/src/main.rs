@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tonic::{transport::Server, Request, Response, Status};
 use prost::Message as ProstMessage;
+use aes_gcm::{Aes256Gcm, Key, Nonce, KeyInit};
+use aes_gcm::aead::Aead;
 use xllm_proto::{
     proxy_service_server::{ProxyService, ProxyServiceServer},
     HttpRequest, HttpResponse, ProxyRequest, ProxyResponse,
@@ -92,8 +94,31 @@ impl ProxyService for ProxyServiceImpl {
         
         println!("🔒 Received obfuscated request to proxy URL: {}", proxy_request.proxy_url);
         
-        // Deserialize the request package to get the actual HTTP request
-        let http_request = match HttpRequest::decode(&proxy_request.request_package[..]) {
+        // DECRYPT the request package first
+        const OBFUSCATION_KEY: &[u8; 32] = b"xllm_secure_proxy_key_2024_v1.0!"; // Pre-shared secret
+        let key = Key::<Aes256Gcm>::from_slice(OBFUSCATION_KEY);
+        let cipher = Aes256Gcm::new(key);
+        
+        // Extract nonce (first 12 bytes) and encrypted data
+        if proxy_request.request_package.len() < 12 {
+            return Err(Status::invalid_argument("Invalid encrypted request package"));
+        }
+        
+        let nonce_bytes = &proxy_request.request_package[..12];
+        let encrypted_data = &proxy_request.request_package[12..];
+        let nonce = Nonce::from_slice(nonce_bytes);
+        
+        // Decrypt the request package
+        let decrypted_package = match cipher.decrypt(nonce, encrypted_data) {
+            Ok(data) => data,
+            Err(e) => {
+                println!("❌ Failed to decrypt request package: {:?}", e);
+                return Err(Status::invalid_argument("Failed to decrypt request package"));
+            }
+        };
+        
+        // Deserialize the decrypted request package to get the actual HTTP request
+        let http_request = match HttpRequest::decode(&decrypted_package[..]) {
             Ok(req) => req,
             Err(e) => {
                 println!("❌ Failed to decode request package: {}", e);
