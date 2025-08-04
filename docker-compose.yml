@@ -11,11 +11,7 @@ services:
       - XLLM_PROXY_PORT=50051
     command: >
       bash -c "
-        apt-get update &&
-        apt-get install -y git &&
-        rm -rf /tmp/xllm &&
-        git clone --depth 1 https://github.com/hydrafusion/xllm.git /tmp/xllm &&
-        cd /tmp/xllm &&
-        cargo run --package xllm-proxy
+        cargo install xllm-proxy &&
+        xllm-proxy
       "
     restart: "no"
