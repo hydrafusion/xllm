@@ -1,0 +1,46 @@
+name: Validate Development Config
+
+on:
+  pull_request:
+    paths:
+      - 'xllm/config.toml'
+  push:
+    paths:
+      - 'xllm/config.toml'
+
+jobs:
+  validate-config:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate config.toml
+        run: |
+          CONFIG_FILE="xllm/config.toml"
+          REQUIRED_PROXY_URL="http://localhost:50051"
+          
+          echo "🔍 Checking $CONFIG_FILE for development settings..."
+          
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ Error: $CONFIG_FILE not found"
+            exit 1
+          fi
+          
+          if grep -q "proxy_url = \"$REQUIRED_PROXY_URL\"" "$CONFIG_FILE"; then
+            echo "✅ Config validation passed: proxy_url is set to localhost"
+          else
+            echo "❌ CONFIG VALIDATION FAILED"
+            echo ""
+            echo "🚨 The config.toml file must use localhost for development:"
+            echo "   Expected: proxy_url = \"$REQUIRED_PROXY_URL\""
+            echo ""
+            echo "Current config.toml content:"
+            echo "----------------------------------------"
+            cat "$CONFIG_FILE" | grep -A 1 -B 1 "proxy_url" || echo "proxy_url not found"
+            echo "----------------------------------------"
+            echo ""
+            echo "💡 This prevents accidentally committing production URLs"
+            echo "   Please update $CONFIG_FILE to use localhost"
+            exit 1
+          fi
