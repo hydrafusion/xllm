@@ -1,6 +1,6 @@
 # xllm
 
-A CLI utility for running LLMs with optional gRPC proxy support.
+A CLI utility for running LLMs with optional TCP proxy support and AES-256-GCM encryption.
 
 ## Installation
 
@@ -11,7 +11,7 @@ cargo install xllm
 xllm --init  # This will generate a config file
 ```
 
-### Option 2: Clone for full features (Recommended if you want gRPC proxy support)
+### Option 2: Clone for full features (Recommended if you want TCP proxy support)
 
 ```bash
 git clone https://github.com/hydrafusion/xllm.git
@@ -22,7 +22,7 @@ cargo build --release
 ./target/release/xllm --init
 ```
 
-**Note**: The published crate on crates.io only includes basic Claude API functionality. For the full experience including the gRPC proxy server (`xllm-proxy`), you need to clone the repository.
+**Note**: The published crate on crates.io only includes basic Claude API functionality. For the full experience including the TCP proxy server (`xllm-proxy`) with encryption, you need to clone the repository.
 
 ## Dev Mode
 
@@ -60,4 +60,4 @@ cargo install --path ./xllm
 This repository contains multiple packages:
 
 - **`xllm`** - The main CLI application (published on crates.io)
-- **`xllm-proxy`** - TCP proxy server for enhanced security (clone only)
+- **`xllm-proxy`** - TCP proxy server with AES-256-GCM encryption for enhanced security (clone only)
