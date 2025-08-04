@@ -5,11 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Proxy server for xllm"
-
-[[example]]
-name = "test_proxy"
-path = "examples/test_proxy.rs"
+description = "TCP proxy server with AES-256-GCM encryption for xllm"
 
 [dependencies]
 tokio = { workspace = true, features = ["net", "io-util", "rt-multi-thread", "macros"] }

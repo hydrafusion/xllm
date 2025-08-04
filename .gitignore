@@ -1,1 +1,4 @@
 /target
+
+# Publishing script (contains sensitive workflow)
+publish.sh
