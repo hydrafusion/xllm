@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "gRPC proxy server for xllm"
+description = "Proxy server for xllm"
 
 [[example]]
 name = "test_proxy"
