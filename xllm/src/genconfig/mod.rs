@@ -1,8 +1,7 @@
+use anyhow::{Context, Result};
+use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
-use anyhow::{Result, Context};
-use serde::Deserialize;
-
 
 pub fn resolve_env_variables(input: &str) -> String {
     let re = regex::Regex::new(r"\$\{([^}]+)\}").unwrap();
@@ -68,7 +67,7 @@ pub fn create_default_config() -> Result<()> {
 
     let default_config = r#"[global]
 proxy = false
-proxy_url = "https://proxy.ai.url"
+proxy_url = "https://localhost:50051"
 
 [models.claude]
 model = "claude-sonnet-4-20250514"
@@ -116,7 +115,10 @@ pub fn get_model_config(config: &Config, model_name: &str) -> Result<ModelProvid
             if let Some(claude_config) = &config.models.claude {
                 Ok(ModelProvider::Claude(claude_config.clone()))
             } else {
-                Err(anyhow::anyhow!("Claude configuration not found for model: {}", model_name))
+                Err(anyhow::anyhow!(
+                    "Claude configuration not found for model: {}",
+                    model_name
+                ))
             }
         }
         // Future models can be added here:
@@ -127,7 +129,10 @@ pub fn get_model_config(config: &Config, model_name: &str) -> Result<ModelProvid
         //         Err(anyhow::anyhow!("OpenAI configuration not found for model: {}", model_name))
         //     }
         // }
-        _ => Err(anyhow::anyhow!("Unknown model: {}. Supported models: opus4, sonnet4, sonnet3, haiku3", model_name))
+        _ => Err(anyhow::anyhow!(
+            "Unknown model: {}. Supported models: opus4, sonnet4, sonnet3, haiku3",
+            model_name
+        )),
     }
 }
 
